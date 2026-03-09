@@ -1,0 +1,103 @@
+{
+  "title": "AP05 播放器",
+  "device": {
+    "ap05_device": {
+      "name": "AP05 播放器"
+    }
+  },
+  "config": {
+    "error": {
+      "cannot_connect": "无法连接到AP05设备WS: {server_ip}",
+      "setup_failed": "无法连接到AP05设备 ({default_ip}): {error}"
+    }
+  },
+  "config_flow": {
+    "step": {
+      "user": {
+        "title": "添加 AP05 播放器",
+        "data": {
+          "name": "设备名称",
+          "server_ip": "设备 IP 地址"
+        }
+      }
+    }
+  },
+  "system": {
+    "log": {
+      "disconnect_success": "AP05 WS连接已成功关闭",
+      "disconnect_failed": "卸载时关闭AP05 WS连接失败: {error}"
+    },
+    "options": {
+      "step": {
+        "user": {
+          "title": "修改 AP05 播放器配置",
+          "data": {
+            "server_ip": "设备 IP 地址"
+          }
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到设备，请检查 IP 地址是否正确",
+      "invalid_ip": "无效的 IP 地址格式",
+      "unknown": "未知错误，请查看日志获取详情"
+    },
+    "abort": {
+      "already_configured": "该 AP05 播放器已配置，无需重复添加"
+    }
+  },
+  "entity": {
+    "switch": {
+      "ap05_playing": {
+        "name": "播放状态",
+        "state": {
+          "on": "播放中",
+          "off": "已停止"
+        },
+        "attributes": {
+          "switch_type": "开关类型",
+          "last_action": "最后操作",
+          "integration": "集成名称",
+          "device_id": "设备 ID",
+          "available": "是否可用"
+        }
+      },
+      "ap05_poweron": {
+        "name": "设备状态",
+        "state": {
+          "on": "开启",
+          "off": "关闭"
+        },
+        "attributes": {
+          "switch_type": "开关类型",
+          "last_action": "最后操作",
+          "integration": "集成名称",
+          "device_id": "设备 ID",
+          "available": "是否可用"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "ap05_connected": "AP05 设备已连接",
+      "ap05_disconnected": "AP05 设备已断开",
+      "ap05_play_start": "AP05 开始播放",
+      "ap05_play_stop": "AP05 停止播放"
+    },
+    "action_type": {
+      "ap05_play": "启动播放",
+      "ap05_stop": "停止播放",
+      "ap05_lcd_on": "打开 LCD 屏幕",
+      "ap05_lcd_off": "关闭 LCD 屏幕"
+    }
+  },
+  "strings": {
+    "connection_failed": "无法连接到 AP05 设备: {server_ip}",
+    "ws_connected": "WebSocket 客户端已成功连接到 AP05 设备",
+    "ws_disconnected": "WebSocket 客户端已断开与 AP05 设备的连接",
+    "lcd_check_failed": "LCD 屏幕状态检查超时，无法执行播放操作",
+    "play_command_sent": "已发送播放命令到 AP05 设备",
+    "stop_command_sent": "已发送停止命令到 AP05 设备"
+  }
+}
