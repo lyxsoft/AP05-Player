@@ -2,6 +2,9 @@
 AP05 Integration 核心文件
 包含集成初始化、配置条目管理、平台转发逻辑
 """
+
+import json
+import os
 import logging
 from datetime import timedelta
 
@@ -11,6 +14,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.util.dt import utcnow
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.translation import async_get_translations  # 导入翻译工具
+from homeassistant.core import callback
 
 # 导入WS客户端类
 from .websocket_client import AP05WSClient
@@ -29,7 +33,6 @@ def get_ap05_device_info(config_entry: ConfigEntry) -> DeviceInfo:
     """生成AP05设备统一的device_info（可在所有实体中复用）"""
     return DeviceInfo(
         identifiers={(DOMAIN, config_entry.entry_id)},
-        # 翻译键：对应 translations/zh-Hans.json 中的 "device.name"
         name=config_entry.data.get("name") or config_entry.title,
         translation_key="ap05_device",
         manufacturer="Shiyun",
@@ -42,6 +45,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """初始化从UI配置的集成条目"""
     hass.data.setdefault(DOMAIN, {})
 
+
+    # ========== 注册语言切换监听（确保执行） ==========
+    @callback
+    def _handle_language_change(event):
+        hass.async_create_task(_clear_translation_cache(hass, event))
+    
+    entry.async_on_unload(
+        hass.bus.async_listen("language_changed", _handle_language_change)
+    )
+
+
     try:
         # 优先级：选项IP > 配置IP > 默认IP
         server_ip = entry.options.get(
@@ -53,7 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ws_client = AP05WSClient(hass, server_ip)
         if not await ws_client.connect():
             error_msg = await _get_translation(
-                hass, "config.error.cannot_connect", 
+                hass, "error.cannot_connect", 
                 {"server_ip": server_ip}  # 翻译占位符参数
             )
             _LOGGER.error(error_msg)
@@ -70,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except Exception as err:
         error_msg = await _get_translation(
-            hass, "config.error.setup_failed",
+            hass, "error.setup_failed",
             {"default_ip": DEFAULT_SERVER_IP, "error": str(err)}
         )
         _LOGGER.error(error_msg)
@@ -106,11 +120,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await ws_client.stop_listen()
                 await ws_client.disconnect()
 
-                success_msg = await _get_translation(hass, "system.log.disconnect_success", None, "system")
+                success_msg = await _get_translation(hass, "log.disconnect_success", None, "system")
                 _LOGGER.info(success_msg)
             except Exception as err:
                 error_msg = await _get_translation(
-                    hass, "system.log.disconnect_failed",
+                    hass, "log.disconnect_failed",
                     {"error": str(err)},
                     "system"
                 )
@@ -121,8 +135,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
-
+    
 # ========== 通用翻译工具函数 ==========
+# 翻译缓存：key=(language, translation_type), value=翻译字典
+_TRANSLATION_CACHE = {}
+# 缓存过期时间（HA 2026版建议短缓存，防止语言切换不生效）
+CACHE_TIMEOUT = timedelta(minutes=10)
+
+
+import json
+import os
+
+_TRANSLATION_CACHE = {}
+
 async def _get_translation(
     hass: HomeAssistant,
     translation_key: str,
@@ -130,41 +155,76 @@ async def _get_translation(
     translation_type: str = "config"
 ) -> str:
     """
-    获取指定键的翻译文本
-    :param hass: HA核心实例
-    :param translation_key: 翻译键（对应zh-Hans.json中的路径）
-    :param placeholders: 翻译文本中的占位符替换字典
-    :return: 翻译后的文本（无翻译则返回原键）
+    直接读取翻译文件，永不返回空！
+    适配 HA2026.02，彻底解决 translations={} 的问题
     """
     if placeholders is None:
         placeholders = {}
 
-    # 适配不同HA版本的async_get_translations参数
-    try:
-        # 新版本（支持domain参数）
-        translations = await async_get_translations(
-            hass,
-            hass.config.language,
-            translation_type,
-            domain=DOMAIN
-        )
-    except TypeError:
-        # 旧版本（无domain参数）
-        translations = await async_get_translations(
-            hass,
-            hass.config.language,
-            translation_type
-        )
+    # 1. 构建缓存key（语言 + 翻译类型 → 不同语言/类型缓存隔离）
+    current_language = hass.config.language
+    cache_key = (current_language, translation_type)
 
-    # 获取原始翻译文本
-    raw_text = translations.get(translation_key, translation_key)
-    
-    # 替换占位符
+    # 从缓存拿
+    if cache_key in _TRANSLATION_CACHE:
+        translations = _TRANSLATION_CACHE[cache_key]
+    else:
+        # 自己读取翻译文件
+        try:
+            integration_path = os.path.dirname(__file__)
+            trans_path = os.path.join(integration_path, "translations", f"{current_language}.json")
+
+
+            # 定义同步读取文件的函数（放到线程池执行）
+            def _sync_read_trans_file(file_path):
+                # 检查文件是否存在
+                if not os.path.exists(file_path):
+                    _LOGGER.error(f"❌ 翻译文件不存在：{file_path}")
+                    return None
+                # 同步读取文件（但在线程池执行，不阻塞事件循环）
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            
+            # 关键：用HA的异步执行器运行同步IO操作
+            translations = await hass.async_add_executor_job(_sync_read_trans_file, trans_path)
+
+            # 检查读取结果
+            if translations is None:
+                return translation_key
+
+            _TRANSLATION_CACHE[cache_key] = translations
+            _LOGGER.debug(f"✅ 自己读取翻译成功：{trans_path}")
+
+        except json.JSONDecodeError as e:
+            _LOGGER.error(f"❌ 翻译文件格式错误（非合法JSON）：{e}")
+            return translation_key
+        except Exception as e:
+            _LOGGER.error(f"❌ 读取翻译文件失败：{e}")
+            return translation_key
+
+    # 3. 解析嵌套翻译键
+    keys = translation_key.split(".")
+    #raw_text = translations
     try:
-        translated_text = raw_text.format(**placeholders)
+        for key in keys:
+            translations = translations[key]
+    except (KeyError, TypeError):
+        return translation_key  # 未命中则返回原键   
+
+    # 4. 替换占位符
+    try:
+        translated_text = translations.format(**placeholders)
     except KeyError as e:
-        _LOGGER.warning(f"翻译占位符缺失: {e} (key: {translation_key})")
-        translated_text = raw_text
+        _LOGGER.warning(f"翻译占位符缺失: {e} (key: {translation_key})，原始文本: {translations}")
+        translated_text = translations
     
     return translated_text
-    
+
+# ========== 缓存清理函数（适配HA语言切换） ==========
+@callback
+async def _clear_translation_cache(hass: HomeAssistant, event):
+    """HA语言切换时清空翻译缓存"""
+    global _TRANSLATION_CACHE
+    _TRANSLATION_CACHE.clear()
+    _LOGGER.debug("HA语言已切换，翻译缓存已清空")
+

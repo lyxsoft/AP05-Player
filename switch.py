@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DOMAIN
 from .__init__ import get_ap05_device_info
+from .__init__ import _get_translation  # 导入翻译函数
 
 from .websocket_client import (
     WS_CMD_CONTROL_LCD_ON_OFF,
@@ -36,15 +37,19 @@ async def async_setup_entry(
 class AP05Playing(SwitchEntity):
     """自定义开关实体"""
     _attr_has_entity_name = True
-    _attr_translation_key = "ap05_playing"
-    _attr_name = "AP05 Playing"
+
+
+    translation_domain = DOMAIN  # 等同于manifest的domain: ap05
+    translation_key = "ap05_playing"  # 对应翻译文件的config_flow根节点
+    #_attr_translation_key = "ap05_playing"
+    #_attr_name = "AP05 Playing"
     _attr_icon = "mdi:play-box"
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """初始化开关"""
         self.hass = hass
         self.config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_playing"
+        self._attr_unique_id = f"{config_entry.entry_id}_ap05_playing"
 
         self.ws_client = self.hass.data[DOMAIN][config_entry.entry_id]["ws_client"]
         self._attr_device_info = get_ap05_device_info(config_entry)
@@ -184,15 +189,17 @@ class AP05Playing(SwitchEntity):
 class AP05PowerOn(SwitchEntity):
     """AP05电源开关（控制LCD屏幕）"""
     _attr_has_entity_name = True
-    _attr_translation_key = "ap05_poweron"
-    _attr_name = "AP05 Power On"
+    translation_domain = DOMAIN  # 等同于manifest的domain: ap05
+    translation_key = "ap05_poweron"  # 对应翻译文件的config_flow根节点
+    #_attr_translation_key = "ap05_poweron"
+    #_attr_name = "AP05 Power On"
     _attr_icon = "mdi:power"  # 电源图标
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """初始化电源开关"""
         self.hass = hass
         self.config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_power_on"  # 唯一ID（避免冲突）
+        self._attr_unique_id = f"{config_entry.entry_id}_ap05_power_on"  # 唯一ID（避免冲突）
 
         # 关联WS客户端和设备信息
         self.ws_client = self.hass.data[DOMAIN][config_entry.entry_id]["ws_client"]
