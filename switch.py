@@ -9,9 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import DOMAIN
-from .__init__ import get_ap05_device_info
-from .__init__ import _get_translation  # 导入翻译函数
+from . import DOMAIN, get_ap05_device_info, generate_ap05_entity_id
+from .__init__ import _get_translation
 
 from .websocket_client import (
     WS_CMD_CONTROL_LCD_ON_OFF,
@@ -25,41 +24,45 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """设置开关平台"""
     async_add_entities([
-        AP05PowerOn(hass, entry),
-        AP05Playing(hass, entry)
+        AP05PowerOn(
+            hass=hass,
+            config_entry=config_entry
+        ),
+        AP05Playing(
+            hass=hass,
+            config_entry=config_entry
+        )
     ])
 
 class AP05Playing(SwitchEntity):
     """自定义开关实体"""
-    _attr_has_entity_name = True
-
-
     translation_domain = DOMAIN  # 等同于manifest的domain: ap05
     translation_key = "ap05_playing"  # 对应翻译文件的config_flow根节点
-    #_attr_translation_key = "ap05_playing"
-    #_attr_name = "AP05 Playing"
-    _attr_icon = "mdi:play-box"
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """初始化开关"""
         self.hass = hass
         self.config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_ap05_playing"
+
+        __entity_id = generate_ap05_entity_id(self.config_entry,"playing")
+
+        self._attr_entity_id = f"switch.{__entity_id}"
+        self._attr_unique_id = __entity_id
 
         self.ws_client = self.hass.data[DOMAIN][config_entry.entry_id]["ws_client"]
         self._attr_device_info = get_ap05_device_info(config_entry)
-        self._listeners = []
 
-        self._attr_available = False  # 初始可用性为不可用
-        self._attr_is_on = False  # 初始状态为关闭
-        
-        # 初始化任务对象
+        self._attr_has_entity_name = True
+        self._attr_icon = "mdi:play-box"
         self._attr_available = self.ws_client.is_connected
+        self._attr_is_on = False  # 初始状态为关闭
+
+        self._listeners = []
 
     @property
     def icon(self):
@@ -179,10 +182,8 @@ class AP05Playing(SwitchEntity):
     def extra_state_attributes(self):
         """返回额外属性"""
         return {
-            "switch_type": "custom",
-            "last_action": "turned_on" if self._attr_is_on else "turned_off",
             "integration": DOMAIN,
-            "device_id": self.config_entry.entry_id,
+            "entity_id": self._attr_entity_id,
             "available": self._attr_available,
         }
 
@@ -191,15 +192,16 @@ class AP05PowerOn(SwitchEntity):
     _attr_has_entity_name = True
     translation_domain = DOMAIN  # 等同于manifest的domain: ap05
     translation_key = "ap05_poweron"  # 对应翻译文件的config_flow根节点
-    #_attr_translation_key = "ap05_poweron"
-    #_attr_name = "AP05 Power On"
     _attr_icon = "mdi:power"  # 电源图标
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """初始化电源开关"""
         self.hass = hass
         self.config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_ap05_power_on"  # 唯一ID（避免冲突）
+
+        __entity_id = generate_ap05_entity_id(self.config_entry,"poweron")
+        self._attr_entity_id = f"switch.{__entity_id}"
+        self._attr_unique_id = __entity_id
 
         # 关联WS客户端和设备信息
         self.ws_client = self.hass.data[DOMAIN][config_entry.entry_id]["ws_client"]
@@ -309,10 +311,8 @@ class AP05PowerOn(SwitchEntity):
     def extra_state_attributes(self):
         """返回额外属性"""
         return {
-            "switch_type": "power",
-            "lcd_on": self._attr_is_on,
             "integration": DOMAIN,
-            "device_id": self.config_entry.entry_id,
-            "available": self._attr_available,
-            "last_updated": datetime.now().isoformat()
+            "power on": self._attr_is_on,
+            "myentity_id": self._attr_entity_id,
+            "available": self._attr_available
         }

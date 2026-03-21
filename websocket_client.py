@@ -103,7 +103,6 @@ class AP05WSClient:
                 async with self.lock:
                     if self.connected:
                         break
-                    _LOGGER.info(f"尝试连接AP05 WebSocket: {self.ws_url}")
                     self.websocket = await websockets.connect(
                         self.ws_url,
                         open_timeout=10,  # 连接超时10秒
@@ -129,6 +128,8 @@ class AP05WSClient:
             # 指数退避重连
             await asyncio.sleep(self.reconnect_delay)
             self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
+            if self.reconnect_delay == self.max_reconnect_delay:
+                break
         
         return self.connected
 

@@ -31,15 +31,36 @@ _LOGGER = logging.getLogger(__name__)
 # ========== 设备信息模板 ==========
 def get_ap05_device_info(config_entry: ConfigEntry) -> DeviceInfo:
     """生成AP05设备统一的device_info（可在所有实体中复用）"""
+
+    # 1. 获取设备IP并替换点（.）为下划线（避免实体ID含非法字符）
+    safe_ip = config_entry.data.get("server_ip", DEFAULT_SERVER_IP).replace(".", "_")
+
     return DeviceInfo(
-        identifiers={(DOMAIN, config_entry.entry_id)},
-        name=config_entry.data.get("name") or config_entry.title,
+        identifiers={(DOMAIN, f"ap05_{safe_ip}")},
         translation_key="ap05_device",
-        manufacturer="Shiyun",
+        translation_placeholders={
+            "safe_ip": safe_ip
+        },
+        manufacturer="北京师旷有限公司",
         model="AP05",
-        sw_version="1.0.0"
+        sw_version="1259",
+        hw_version="1259"
     )
 
+# ========== 新增：实体ID生成工具 ==========
+def generate_ap05_entity_id(config_entry: ConfigEntry, feature_suffix: str) -> str:
+    """
+    生成语义化实体ID，格式：{平台域}.ap05_{设备IP替换点为下划线}_{功能后缀}
+    示例：switch.ap05_192_168_0_225_power_switch
+    """
+    # 1. 获取设备IP并替换点（.）为下划线（避免实体ID含非法字符）
+    server_ip = config_entry.options.get(
+        "server_ip",
+        config_entry.data.get("server_ip", DEFAULT_SERVER_IP)
+    )
+    
+    # 2. 组合最终实体ID（平台域 + 标识）
+    return (f"ap05_{server_ip}_{feature_suffix}").lower().replace(".", "_").replace(":", "_").replace("-", "_")
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """初始化从UI配置的集成条目"""
